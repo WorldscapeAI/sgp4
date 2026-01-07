@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-
 #include "Tle.h"
 
 #include <locale>
+#include <map>
 
 namespace libsgp4
 {
@@ -62,6 +62,53 @@ namespace
     static const unsigned int TLE2_LEN_MEANMOTION = 11;
     static const unsigned int TLE2_COL_REVATEPOCH = 63;
     static const unsigned int TLE2_LEN_REVATEPOCH = 5;
+
+    std::map<const char, std::string> alpha5_table = {
+    {'A', "10"},
+    {'B', "11"},
+    {'C', "12"},
+    {'D', "13"},
+    {'E', "14"},
+    {'F', "15"},
+    {'G', "16"},
+    {'H', "17"},
+    {'J', "18"},
+    {'K', "19"},
+    {'L', "20"},
+    {'M', "21"},
+    {'N', "22"},
+    {'P', "23"},
+    {'Q', "24"},
+    {'R', "25"},
+    {'S', "26"},
+    {'T', "27"},
+    {'U', "28"},
+    {'V', "29"},
+    {'W', "30"},
+    {'Y', "31"},
+    {'Z', "32"}
+    };
+
+    uint32_t decode_alpha5(const std::string& cat_num)
+    {
+        std::string result_str;
+        if (cat_num[0] >= 'A' && cat_num[0] <= 'Z')
+        {
+            auto it = alpha5_table.find(cat_num[0]);
+            if (it != alpha5_table.end())
+                result_str = it->second;
+            else
+                return UINT32_MAX;
+        }
+        else
+        {
+            result_str = cat_num[0];
+        }
+
+        result_str += cat_num.substr(1);
+
+        return static_cast<uint32_t>(strtol(result_str.c_str(), nullptr, 0));
+    }
 }
 
 /**
@@ -90,20 +137,20 @@ void Tle::Initialize()
         throw TleException("Invalid line beginning for line two");
     }
 
-    unsigned int sat_number_1;
-    unsigned int sat_number_2;
-
-    ExtractInteger(line_one_.substr(TLE1_COL_NORADNUM,
-                TLE1_LEN_NORADNUM), sat_number_1);
-    ExtractInteger(line_two_.substr(TLE2_COL_NORADNUM,
-                TLE2_LEN_NORADNUM), sat_number_2);
+    const std::string sat_number_1 = line_one_.substr(TLE1_COL_NORADNUM, TLE1_LEN_NORADNUM);
+    const std::string sat_number_2 = line_two_.substr(TLE2_COL_NORADNUM, TLE2_LEN_NORADNUM);
 
     if (sat_number_1 != sat_number_2)
     {
         throw TleException("Satellite numbers do not match");
     }
 
-    norad_number_ = sat_number_1;
+    // The satellite number might actually be Alpha-5 encoded
+    // See here: https://www.space-track.org/documentation#/tle-alpha5
+    norad_number_ = decode_alpha5(sat_number_1);
+
+    if (norad_number_ == UINT32_MAX)
+        throw TleException("satellite number is not properly Alpha5 encoded");
 
     if (name_.empty())
     {
@@ -344,7 +391,7 @@ void Tle::ExtractExponential(const std::string& str, double& val)
         }
         else if (i == str.end() - 2)
         {
-            if (*i == '-' || *i == '+')
+            if (*i == '-' || *i == '+' || *i == '0')
             {
                 temp += 'e';
                 temp += *i;
